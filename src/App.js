@@ -5,16 +5,16 @@ const BOARD_SIZE = 9;
 
 function GameModeSelector({ onSelect }) {
   return (
-    <div className="flex flex-col items-center gap-4 my-8">
-      <h1 className="text-3xl font-bold mb-2">Quoridor MVP</h1>
+    <div className="flex flex-col items-center gap-6 my-10 p-8 bg-white shadow-xl rounded-xl">
+      <h1 className="text-4xl font-light text-gray-700 mb-6">Quoridor MVP</h1>
       <button
-        className="bg-blue-600 text-white px-6 py-2 rounded shadow hover:bg-blue-700 transition"
+        className="bg-sky-500 text-white px-8 py-3 rounded-lg shadow-md hover:bg-sky-600 hover:shadow-lg hover:scale-105 transition-all duration-150 ease-in-out"
         onClick={() => onSelect('bot')}
       >
         Play vs Bot
       </button>
       <button
-        className="bg-green-600 text-white px-6 py-2 rounded shadow hover:bg-green-700 transition"
+        className="bg-teal-500 text-white px-8 py-3 rounded-lg shadow-md hover:bg-teal-600 hover:shadow-lg hover:scale-105 transition-all duration-150 ease-in-out"
         onClick={() => onSelect('online')}
       >
         Play Online (1v1)
@@ -24,61 +24,58 @@ function GameModeSelector({ onSelect }) {
 }
 
 function Board({ pawns, walls, validMoves, onMove, wallMode, validWalls, onPlaceWall }) {
-  // Board cell size and wall thickness
   const CELL = 48;
   const WALL = 10;
-  const WALL_LEN = CELL * 2 + 2;
+  const WALL_LEN = CELL * 2 + 2; // Wall covers two cells and the gap
   const [hoverWall, setHoverWall] = useState(null);
 
   return (
-    <div className="relative mx-auto" style={{ width: CELL * BOARD_SIZE + WALL, height: CELL * BOARD_SIZE + WALL }}>
-      {/* Board grid */}
+    <div className="relative mx-auto bg-stone-100 rounded-xl shadow-2xl" style={{ width: CELL * BOARD_SIZE + WALL, height: CELL * BOARD_SIZE + WALL, padding: WALL / 2 }}>
+      {/* Board grid - thinner and lighter lines */}
       <div
         className="absolute left-0 top-0"
         style={{ width: CELL * BOARD_SIZE + WALL, height: CELL * BOARD_SIZE + WALL }}
       >
-        {/* Draw grid lines */}
         {[...Array(BOARD_SIZE + 1)].map((_, i) => (
-          <>
-            {/* Horizontal */}
+          <React.Fragment key={`gridline-${i}`}>
+            {/* Horizontal lines */}
             <div
-              key={`h${i}`}
-              className="absolute bg-gray-400"
-              style={{ top: i * CELL, left: 0, width: CELL * BOARD_SIZE + WALL, height: 2, zIndex: 1, borderRadius: 1 }}
+              className="absolute bg-stone-300"
+              style={{ top: i * CELL + WALL/2, left: WALL/2, width: CELL * BOARD_SIZE, height: 1, zIndex: 1 }}
             />
-            {/* Vertical */}
+            {/* Vertical lines */}
             <div
-              key={`v${i}`}
-              className="absolute bg-gray-400"
-              style={{ left: i * CELL, top: 0, height: CELL * BOARD_SIZE + WALL, width: 2, zIndex: 1, borderRadius: 1 }}
+              className="absolute bg-stone-300"
+              style={{ left: i * CELL + WALL/2, top: WALL/2, height: CELL * BOARD_SIZE, width: 1, zIndex: 1 }}
             />
-          </>
+          </React.Fragment>
         ))}
       </div>
-      {/* Board cells */}
-      <div className="absolute left-0 top-0 grid" style={{ gridTemplateColumns: `repeat(${BOARD_SIZE}, ${CELL}px)`, gridTemplateRows: `repeat(${BOARD_SIZE}, ${CELL}px)` }}>
+
+      {/* Board cells - no individual bg, rely on board bg, add rounding to cells for visual separation if needed */}
+      <div className="absolute left-0 top-0 grid" style={{ left: WALL/2, top: WALL/2, gridTemplateColumns: `repeat(${BOARD_SIZE}, ${CELL}px)`, gridTemplateRows: `repeat(${BOARD_SIZE}, ${CELL}px)` }}>
         {Array.from({ length: BOARD_SIZE * BOARD_SIZE }).map((_, idx) => {
           const row = Math.floor(idx / BOARD_SIZE);
           const col = idx % BOARD_SIZE;
           const pawn = pawns.find(p => p.row === row && p.col === col);
-          // Only highlight valid moves for the current player, not the pawn's current cell
           const isValidMove = validMoves.some(m => m.row === row && m.col === col) && !pawn;
           return (
             <div
               key={idx}
-              className={`relative flex items-center justify-center bg-white transition-all duration-200 ${isValidMove && !wallMode ? 'cursor-pointer' : ''}`}
+              className={`relative flex items-center justify-center transition-all duration-200 rounded-sm ${isValidMove && !wallMode ? 'cursor-pointer' : ''}`}
               style={{ width: CELL, height: CELL, boxSizing: 'border-box' }}
               onClick={() => isValidMove && !wallMode && onMove(row, col)}
               tabIndex={isValidMove && !wallMode ? 0 : -1}
               aria-label={pawn ? `Pawn ${pawn.player}` : `Cell ${row},${col}`}
             >
-              {/* Blue move highlight overlay */}
+              {/* Valid move highlight - softer, more modern */}
               {isValidMove && !wallMode && (
-                <div className="absolute inset-0 pointer-events-none z-10 animate-pulse" style={{borderRadius:8, boxShadow:'0 0 0 6px #3b82f6, 0 0 16px 6px #60a5fa66', transition:'box-shadow 0.2s'}} />
+                <div className="absolute inset-0 pointer-events-none z-10 animate-pulse" style={{borderRadius: '4px', boxShadow:'0 0 0 3px rgba(59,130,246,0.5), 0 0 12px 3px rgba(96,165,250,0.3)', transition:'box-shadow 0.2s'}} />
               )}
               {pawn && (
                 <div
-                  className={`w-8 h-8 rounded-full shadow-lg border-4 ${pawn.player === 1 ? 'bg-blue-500 border-blue-800' : 'bg-green-500 border-green-800'} transition-all duration-300`}
+                  className={`w-9 h-9 rounded-full shadow-lg border-4 transition-all duration-300 flex items-center justify-center`}
+                  style={pawn.player === 1 ? { backgroundColor: '#38bdf8', borderColor: '#0284c7'} : { backgroundColor: '#34d399', borderColor: '#059669'}}
                   title={`Player ${pawn.player}`}
                 />
               )}
@@ -86,41 +83,43 @@ function Board({ pawns, walls, validMoves, onMove, wallMode, validWalls, onPlace
           );
         })}
       </div>
-      {/* Placed walls */}
+
+      {/* Placed walls - corrected vertical position, new color */}
       {walls.map((wall, i) => (
         <div
-          key={i}
-          className={`absolute bg-yellow-700 shadow-xl ${wall.orientation === 'h' ? 'hover:bg-yellow-600' : 'hover:bg-yellow-600'}`}
+          key={`wall-${i}`}
+          className={`absolute bg-orange-500 shadow-md hover:bg-orange-400`}
           style={{
             left: wall.orientation === 'h'
-              ? wall.col * CELL
-              : wall.col * CELL - WALL / 2,
+              ? wall.col * CELL + WALL/2
+              : (wall.col + 1) * CELL - WALL / 2 + WALL/2, // Corrected: (wall.col + 1) * CELL for line, -WALL/2 for center, +BoardPadding for offset
             top: wall.orientation === 'h'
-              ? wall.row * CELL + CELL - WALL / 2
-              : wall.row * CELL,
+              ? (wall.row + 1) * CELL - WALL / 2 + WALL/2 // Corrected: (wall.row + 1) * CELL for line, -WALL/2 for center, +BoardPadding for offset
+              : wall.row * CELL + WALL/2,
             width: wall.orientation === 'h' ? WALL_LEN : WALL,
             height: wall.orientation === 'h' ? WALL : WALL_LEN,
-            borderRadius: WALL / 2,
+            borderRadius: WALL / 3,
             zIndex: 30,
             transition: 'all 0.2s',
           }}
         />
       ))}
-      {/* Wall placement highlights */}
+
+      {/* Wall placement highlights - new color */}
       {wallMode && validWalls.map((wall, i) => {
         const isHover = hoverWall && hoverWall.row === wall.row && hoverWall.col === wall.col && hoverWall.orientation === wall.orientation;
         return (
           <div
-            key={i}
-            className={`absolute ${isHover ? 'bg-yellow-400/80' : 'bg-yellow-300/40'} cursor-pointer transition-all duration-150`}
+            key={`validwall-${i}`}
+            className={`absolute ${isHover ? 'bg-orange-500/70' : 'bg-orange-400/60'} cursor-pointer transition-all duration-150`}
             style={{
-              left: wall.col * CELL + (wall.orientation === 'h' ? 0 : CELL - WALL / 2),
-              top: wall.row * CELL + (wall.orientation === 'h' ? CELL - WALL / 2 : 0),
+              left: wall.col * CELL + (wall.orientation === 'h' ? 0 : CELL - WALL / 2) + WALL/2,
+              top: wall.row * CELL + (wall.orientation === 'h' ? CELL - WALL / 2 : 0) + WALL/2,
               width: wall.orientation === 'h' ? WALL_LEN : WALL,
               height: wall.orientation === 'h' ? WALL : WALL_LEN,
-              borderRadius: WALL / 2,
+              borderRadius: WALL / 3,
               zIndex: 40,
-              boxShadow: isHover ? '0 0 8px 2px #facc15' : 'none',
+              boxShadow: isHover ? '0 0 10px 2px #fb923c' : 'none',
             }}
             onMouseEnter={() => setHoverWall(wall)}
             onMouseLeave={() => setHoverWall(null)}
@@ -130,28 +129,26 @@ function Board({ pawns, walls, validMoves, onMove, wallMode, validWalls, onPlace
           />
         );
       })}
-      {/* Ghost wall on hover */}
+
+      {/* Ghost wall on hover - new color */}
       {wallMode && hoverWall && (
         <div
-          className="absolute pointer-events-none bg-yellow-400/80 animate-pulse"
+          className="absolute pointer-events-none bg-orange-500/70 animate-pulse"
           style={{
-            left: hoverWall.col * CELL + (hoverWall.orientation === 'h' ? 0 : CELL - WALL / 2),
-            top: hoverWall.row * CELL + (hoverWall.orientation === 'h' ? CELL - WALL / 2 : 0),
+            left: hoverWall.col * CELL + (hoverWall.orientation === 'h' ? 0 : CELL - WALL / 2) + WALL/2,
+            top: hoverWall.row * CELL + (hoverWall.orientation === 'h' ? CELL - WALL / 2 : 0) + WALL/2,
             width: hoverWall.orientation === 'h' ? WALL_LEN : WALL,
             height: hoverWall.orientation === 'h' ? WALL : WALL_LEN,
-            borderRadius: WALL / 2,
+            borderRadius: WALL / 3,
             zIndex: 50,
             opacity: 0.7,
-            boxShadow: '0 0 16px 4px #facc15',
+            boxShadow: '0 0 12px 3px #fb923c',
           }}
         />
       )}
     </div>
   );
 }
-
-
-
 function getValidPawnMoves(pawns, walls, player) {
   // Allow orthogonal moves, block only if a wall segment is DIRECTLY between the cells
   const me = pawns.find(p => p.player === player);
@@ -420,47 +417,62 @@ function QuoridorGame({ mode }) {
   }, [pawns]);
 
   return (
-    <div className="flex flex-col items-center w-full min-h-screen justify-center bg-gradient-to-br from-blue-50 to-green-100 p-2">
-      <div className="w-full max-w-5xl flex flex-row items-center justify-center gap-4">
+    <div className="flex flex-col items-center w-full min-h-screen justify-start pt-8 bg-gradient-to-br from-slate-100 to-sky-100 p-4 selection:bg-sky-200 selection:text-sky-900">
+      <div className="w-full max-w-6xl flex flex-row items-start justify-center gap-8">
         {/* Left panel: P1 walls */}
-        <div className="flex flex-col items-center justify-center min-w-[60px]">
-          <div className="rounded-lg bg-blue-100 border-2 border-blue-400 px-2 py-3 mb-2 text-blue-700 font-bold text-lg shadow text-center">
-            <span className="block text-xs mb-1">P1</span>
-            <span className="text-2xl">{wallCount[1]}</span>
-            <span className="block text-xs mt-1">walls</span>
+        <div className="flex flex-col items-center justify-start pt-20 min-w-[100px]">
+          <div className="rounded-xl bg-sky-100/80 border border-sky-300 px-4 py-3 text-sky-700 font-medium text-lg shadow-lg text-center sticky top-8">
+            <span className="block text-sm mb-1 text-sky-600">Player 1</span>
+            <span className="text-4xl font-bold text-sky-600">{wallCount[1]}</span>
+            <span className="block text-xs mt-1 text-sky-500">walls left</span>
           </div>
         </div>
+
         {/* Center: Board & controls */}
-        <div className="flex flex-col items-center gap-2">
-          <div className="font-bold text-lg mb-1">Mode: {mode === 'bot' ? 'vs Bot' : 'Online 1v1'}</div>
-          {winner && <div className="text-green-700 bg-yellow-100 border border-yellow-400 rounded px-3 py-1 mb-2 text-center text-lg font-bold shadow">Player {winner} wins! 🎉</div>}
-          <div className="flex flex-row gap-2 items-center mb-1">
-            <span className="text-base">Turn:</span>
-            <span className={turn === 1 ? 'text-blue-600 font-bold' : 'text-green-600 font-bold'}>
-              Player {turn}{mode === 'bot' && turn === 2 ? ' (Bot)' : ''}
-            </span>
-          </div>
-          <div className="flex gap-2 mb-1">
+        <div className="flex flex-col items-center gap-4">
+          <div className="text-xl font-light text-gray-600">Mode: {mode === 'bot' ? 'vs Bot' : 'Online 1v1'}</div>
+          
+          {winner && 
+            <div className="bg-yellow-200/70 border border-yellow-500 text-yellow-800 rounded-lg px-6 py-3 my-2 text-xl font-semibold shadow-md text-center">
+              Player {winner} wins! 🎉
+            </div>
+          }
+          
+          {!winner && (
+            <div className="flex items-baseline gap-2 mb-2">
+              <span className="text-lg text-gray-700">Turn:</span>
+              <span className={`font-semibold text-2xl ${turn === 1 ? 'text-sky-600' : 'text-emerald-600'}`}>
+                Player {turn}{mode === 'bot' && turn === 2 ? ' (Bot)' : ''}
+              </span>
+            </div>
+          )}
+
+          <div className="flex gap-3 mb-3">
             <button
               aria-label="Move Pawn"
-              className={`px-2 py-1 rounded text-xs ${!wallMode ? 'bg-blue-500 text-white' : 'bg-gray-200'} hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-400`}
+              className={`px-5 py-2 rounded-md text-sm font-medium shadow focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors duration-150 disabled:opacity-60 disabled:cursor-not-allowed ${!wallMode ? 'bg-sky-500 text-white hover:bg-sky-600 focus:ring-sky-400' : 'bg-slate-200 text-slate-700 hover:bg-slate-300 focus:ring-slate-400'}`}
               onClick={() => setWallMode(false)}
-              disabled={winner}
+              disabled={!!winner}
               tabIndex={0}
               title="Move your pawn"
             >Move Pawn</button>
             <button
               aria-label="Place Wall"
-              className={`px-2 py-1 rounded text-xs ${wallMode ? 'bg-yellow-500 text-white' : 'bg-gray-200'} hover:bg-yellow-600 focus:outline-none focus:ring-2 focus:ring-yellow-400`}
+              className={`px-5 py-2 rounded-md text-sm font-medium shadow focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors duration-150 disabled:opacity-60 disabled:cursor-not-allowed ${wallMode ? 'bg-orange-500 text-white hover:bg-orange-600 focus:ring-orange-400' : 'bg-slate-200 text-slate-700 hover:bg-slate-300 focus:ring-slate-400'}`}
               onClick={() => setWallMode(true)}
-              disabled={wallCount[turn] === 0 || winner}
+              disabled={wallCount[turn] === 0 || !!winner}
               tabIndex={0}
               title="Place a wall"
             >Place Wall</button>
           </div>
-          <div className="mb-1 text-xs text-gray-700 text-center max-w-xs">{wallMode ? "Click a yellow highlight to place a wall. Walls can't overlap, cross, or be adjacent to another wall." : "Click a blue highlight to move your pawn. First to the opposite side wins!"}</div>
-          {error && <div className="mb-1 text-red-600 font-semibold animate-pulse text-xs text-center">{error}</div>}
-          <div className="mb-1">
+          
+          <div className="mb-2 text-sm text-gray-600 text-center max-w-md min-h-[40px]">
+            {wallMode ? "Click an orange highlight to place a wall. Walls cannot overlap or completely block a player." : "Click a blue highlight to move your pawn. Reach the opposite side to win!"}
+          </div>
+          
+          {error && <div className="mb-2 text-red-500 font-medium text-sm animate-pulse min-h-[20px]">{error}</div>}
+          
+          <div className="mb-4">
             <Board
               pawns={pawns}
               walls={walls}
@@ -471,17 +483,28 @@ function QuoridorGame({ mode }) {
               onPlaceWall={winner ? () => {} : handlePlaceWall}
             />
           </div>
-          <div className="flex gap-2 mt-1 mb-1">
-            <button aria-label="Restart Game" className="bg-gray-200 px-2 py-1 rounded text-xs hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-400" onClick={() => window.location.reload()}>Restart</button>
+          
+          <div className="flex gap-3 mt-2 mb-4">
+            <button 
+              aria-label="Restart Game" 
+              className="bg-slate-500 hover:bg-slate-600 text-white px-5 py-2 rounded-md text-sm font-medium shadow focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2 transition-colors duration-150"
+              onClick={() => window.location.reload()}
+            >
+              Restart Game
+            </button>
           </div>
-          <div className="text-gray-400 text-xs max-w-xl text-center">Tip: Use tab to navigate controls. Try playing vs the bot or explore wall strategies. Future: abilities & online play!</div>
+          
+          <div className="text-xs text-gray-500 max-w-lg text-center">
+            Quoridor MVP - Strategic board game of pawns and walls.
+          </div>
         </div>
+
         {/* Right panel: P2 walls */}
-        <div className="flex flex-col items-center justify-center min-w-[60px]">
-          <div className="rounded-lg bg-green-100 border-2 border-green-400 px-2 py-3 mb-2 text-green-700 font-bold text-lg shadow text-center">
-            <span className="block text-xs mb-1">P2</span>
-            <span className="text-2xl">{wallCount[2]}</span>
-            <span className="block text-xs mt-1">walls</span>
+        <div className="flex flex-col items-center justify-start pt-20 min-w-[100px]">
+          <div className="rounded-xl bg-emerald-100/80 border border-emerald-300 px-4 py-3 text-emerald-700 font-medium text-lg shadow-lg text-center sticky top-8">
+            <span className="block text-sm mb-1 text-emerald-600">Player 2{mode === 'bot' ? ' (Bot)' : ''}</span>
+            <span className="text-4xl font-bold text-emerald-600">{wallCount[2]}</span>
+            <span className="block text-xs mt-1 text-emerald-500">walls left</span>
           </div>
         </div>
       </div>
