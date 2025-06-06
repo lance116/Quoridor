@@ -209,6 +209,7 @@ function smartBotMove(pawns, walls, wallCount) {
   const playerGoal = [0];
   const botPath = shortestPath(bot, botGoal, walls, pawns);
   const playerPath = shortestPath(player, playerGoal, walls, pawns);
+  
   // 2. If player path is strictly shorter and bot has walls, try to place a wall to slow player
   if (
     wallCount[2] > 0 && playerPath && botPath && playerPath.length < botPath.length
@@ -224,12 +225,32 @@ function smartBotMove(pawns, walls, wallCount) {
       }
     }
   }
-  // 1. If bot can move, take next step on shortest path
+  
+  // 3. If bot can move, take next step on shortest path
   if (botPath && botPath.length > 1) {
     return { type: 'move', row: botPath[1].row, col: botPath[1].col };
   }
-  // 4. Or do nothing
-  return null;
+  
+  // 4. Fallback: if no path found, try any valid move
+  const validMoves = getValidPawnMoves(pawns, walls, 2);
+  if (validMoves.length > 0) {
+    // Choose the move that gets closest to the goal
+    let bestMove = validMoves[0];
+    let bestDistance = Math.abs(validMoves[0].row - (BOARD_SIZE - 1));
+    
+    for (const move of validMoves) {
+      const distance = Math.abs(move.row - (BOARD_SIZE - 1));
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestMove = move;
+      }
+    }
+    
+    return { type: 'move', row: bestMove.row, col: bestMove.col };
+  }
+  
+  // 5. Last resort: skip turn (this should never happen in valid Quoridor)
+  return { type: 'skip' };
 }
 
 function randomBotMove(pawns, walls) {
@@ -304,13 +325,16 @@ function isWallOverlap(walls, wall) {
 function isWallBlocksPath(walls, pawns, newWall) {
   // Check if adding newWall blocks either player from reaching their goal (BFS)
   const tempWalls = [...walls, newWall];
+  
   function bfs(startRow, startCol, goalRow) {
     const visited = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(false));
     const queue = [[startRow, startCol]];
     visited[startRow][startCol] = true;
+    
     while (queue.length) {
       const [r, c] = queue.shift();
       if (r === goalRow) return true;
+      
       for (const { dr, dc } of [
         { dr: -1, dc: 0 }, { dr: 1, dc: 0 }, { dr: 0, dc: -1 }, { dr: 0, dc: 1 }
       ]) {
@@ -318,7 +342,8 @@ function isWallBlocksPath(walls, pawns, newWall) {
         if (
           nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE &&
           !visited[nr][nc] &&
-          !isMoveBlocked({ row: r, col: c }, { row: nr, col: nc }, tempWalls)
+          !isMoveBlocked({ row: r, col: c }, { row: nr, col: nc }, tempWalls) &&
+          !pawns.some(p => p.row === nr && p.col === nc)
         ) {
           visited[nr][nc] = true;
           queue.push([nr, nc]);
@@ -327,10 +352,16 @@ function isWallBlocksPath(walls, pawns, newWall) {
     }
     return false;
   }
-  // If both players have a path, wall does not block all paths
-  return !(
-    bfs(pawns[0].row, pawns[0].col, 0) && bfs(pawns[1].row, pawns[1].col, BOARD_SIZE - 1)
-  );
+  
+  // Player 1 needs to reach row 0, Player 2 needs to reach row 8
+  const player1 = pawns.find(p => p.player === 1);
+  const player2 = pawns.find(p => p.player === 2);
+  
+  const player1CanReachGoal = bfs(player1.row, player1.col, 0);
+  const player2CanReachGoal = bfs(player2.row, player2.col, BOARD_SIZE - 1);
+  
+  // Wall blocks path if either player cannot reach their goal
+  return !player1CanReachGoal || !player2CanReachGoal;
 }
 
 function getAllValidWalls(walls, pawns) {
@@ -393,20 +424,21 @@ function QuoridorGame({ mode }) {
     setTurn(turn === 1 ? 2 : 1);
     setWallMode(false);
   }
-
   // Bot makes a move after player
   React.useEffect(() => {
     if (mode === 'bot' && turn === 2 && !winner) {
       const botAction = smartBotMove(pawns, walls, wallCount);
-      if (botAction) {
-        setTimeout(() => {
-          if (botAction.type === 'move') {
-            handleMove(botAction.row, botAction.col);
-          } else if (botAction.type === 'wall') {
-            handlePlaceWall(botAction.wall);
-          }
-        }, 600);
-      }
+      
+      setTimeout(() => {
+        if (botAction && botAction.type === 'move') {
+          handleMove(botAction.row, botAction.col);
+        } else if (botAction && botAction.type === 'wall') {
+          handlePlaceWall(botAction.wall);
+        } else {
+          // Skip turn if no action or skip action - advance turn to player
+          setTurn(1);
+        }
+      }, 600);
     }
   }, [turn, mode, pawns, walls, wallCount, winner]);
 
