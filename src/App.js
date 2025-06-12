@@ -150,7 +150,7 @@ function Board({ pawns, walls, validMoves, onMove, wallMode, validWalls, onPlace
   );
 }
 function getValidPawnMoves(pawns, walls, player) {
-  // Allow orthogonal moves, block only if a wall segment is DIRECTLY between the cells
+  // Enhanced function that handles orthogonal moves, jumps, and diagonal jumps
   const me = pawns.find(p => p.player === player);
   const others = pawns.filter(p => p.player !== player);
   const moves = [];
@@ -160,49 +160,151 @@ function getValidPawnMoves(pawns, walls, player) {
     { dr: 0, dc: -1 }, // left
     { dr: 0, dc: 1 },  // right
   ];
+  
   for (const { dr, dc } of directions) {
     const nr = me.row + dr;
     const nc = me.col + dc;
+    
     // Check board bounds
     if (nr < 0 || nr >= BOARD_SIZE || nc < 0 || nc >= BOARD_SIZE) continue;
+    
+    // Check if move is blocked by a wall
+    if (isMoveBlocked({ row: me.row, col: me.col }, { row: nr, col: nc }, walls)) continue;
+    
     // Check for pawn collision
-    if (others.some(p => p.row === nr && p.col === nc)) continue;
-    // Only block if a wall segment is directly between from and to
-    if (!isMoveBlocked({ row: me.row, col: me.col }, { row: nr, col: nc }, walls)) {
+    const pawnBlocking = others.find(p => p.row === nr && p.col === nc);
+    
+    if (!pawnBlocking) {
+      // Simple move, no pawn blocking
       moves.push({ row: nr, col: nc });
+    } else {
+      // There's a pawn blocking, check if we can jump over
+      const jumpR = nr + dr;
+      const jumpC = nc + dc;
+      
+      // Check if jump is valid (in bounds and not blocked)
+      if (
+        jumpR >= 0 && jumpR < BOARD_SIZE && 
+        jumpC >= 0 && jumpC < BOARD_SIZE && 
+        !isMoveBlocked({ row: nr, col: nc }, { row: jumpR, col: jumpC }, walls) &&
+        !pawns.some(p => p.row === jumpR && p.col === jumpC)
+      ) {
+        moves.push({ row: jumpR, col: jumpC });
+      } 
+      // If direct jump is not possible, check diagonal moves (Quoridor advanced rule)
+      else {
+        // Try diagonal jumps if straight jump is blocked by wall or boundary
+        for (const { ddr, ddc } of directions) {
+          // Skip original direction
+          if (ddr === dr && ddc === dc) continue;
+          
+          const diagR = nr + ddr;
+          const diagC = nc + ddc;
+          
+          // Check if diagonal move is valid
+          if (
+            diagR >= 0 && diagR < BOARD_SIZE && 
+            diagC >= 0 && diagC < BOARD_SIZE &&
+            !isMoveBlocked({ row: nr, col: nc }, { row: diagR, col: diagC }, walls) &&
+            !pawns.some(p => p.row === diagR && p.col === diagC)
+          ) {
+            moves.push({ row: diagR, col: diagC });
+          }
+        }
+      }
     }
   }
+  
   return moves;
 }
 
 function shortestPath(start, goalRows, walls, pawns) {
-  // BFS from start to any row in goalRows (array of rows)
+  // Enhanced BFS from start to any row in goalRows (array of rows)
   const queue = [[start.row, start.col, []]];
   const visited = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(false));
   visited[start.row][start.col] = true;
+  
+  // Handle special case where pawn is already at goal
+  if (goalRows.includes(start.row)) return [{ row: start.row, col: start.col }];
+  
+  // Direction vectors for movement: up, down, left, right
+  const directions = [
+    { dr: -1, dc: 0 }, { dr: 1, dc: 0 }, { dr: 0, dc: -1 }, { dr: 0, dc: 1 }
+  ];
+  
   while (queue.length) {
     const [r, c, path] = queue.shift();
+    
+    // Check if we've reached a goal row
     if (goalRows.includes(r)) return [...path, { row: r, col: c }];
-    for (const { dr, dc } of [
-      { dr: -1, dc: 0 }, { dr: 1, dc: 0 }, { dr: 0, dc: -1 }, { dr: 0, dc: 1 }
-    ]) {
+    
+    // Create a copy of pawns excluding the current one to handle jumping
+    const otherPawns = pawns.filter(p => !(p.row === start.row && p.col === start.col));
+    
+    for (const { dr, dc } of directions) {
       const nr = r + dr, nc = c + dc;
+      
+      // Basic bounds and wall checking
       if (
         nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE &&
         !visited[nr][nc] &&
-        !isMoveBlocked({ row: r, col: c }, { row: nr, col: nc }, walls) &&
-        !pawns.some(p => p.row === nr && p.col === nc)
+        !isMoveBlocked({ row: r, col: c }, { row: nr, col: nc }, walls)
       ) {
-        visited[nr][nc] = true;
-        queue.push([nr, nc, [...path, { row: r, col: c }]]);
+        // Check for pawn collision and handle jumping
+        const pawnBlocking = pawns.find(p => p.row === nr && p.col === nc);
+        
+        if (!pawnBlocking) {
+          // No pawn blocking, mark as visited and add to queue
+          visited[nr][nc] = true;
+          queue.push([nr, nc, [...path, { row: r, col: c }]]);
+        } else {
+          // There's a pawn blocking, try to jump over if possible
+          const jumpR = nr + dr;
+          const jumpC = nc + dc;
+          
+          // Check if jump is valid (in bounds, no wall, no other pawn)
+          if (
+            jumpR >= 0 && jumpR < BOARD_SIZE && jumpC >= 0 && jumpC < BOARD_SIZE &&
+            !visited[jumpR][jumpC] &&
+            !isMoveBlocked({ row: nr, col: nc }, { row: jumpR, col: jumpC }, walls) &&
+            !pawns.some(p => p.row === jumpR && p.col === jumpC)
+          ) {
+            visited[jumpR][jumpC] = true;
+            queue.push([jumpR, jumpC, [...path, { row: r, col: c }]]);
+          }
+          // Handle diagonal jumps if straight jump is blocked - for advanced Quoridor rules
+          else {
+            // Try diagonal jumps if straight jump is blocked by wall or boundary
+            for (const { ddr, ddc } of [
+              { ddr: -1, ddc: 0 }, { ddr: 1, ddc: 0 }, { ddr: 0, ddc: -1 }, { ddr: 0, ddc: 1 }
+            ]) {
+              // Skip original direction
+              if (ddr === dr && ddc === dc) continue;
+              
+              const diagR = nr + ddr;
+              const diagC = nc + ddc;
+              
+              // Check if diagonal move is valid
+              if (
+                diagR >= 0 && diagR < BOARD_SIZE && diagC >= 0 && diagC < BOARD_SIZE &&
+                !visited[diagR][diagC] &&
+                !isMoveBlocked({ row: nr, col: nc }, { row: diagR, col: diagC }, walls) &&
+                !pawns.some(p => p.row === diagR && p.col === diagC)
+              ) {
+                visited[diagR][diagC] = true;
+                queue.push([diagR, diagC, [...path, { row: r, col: c }]]);
+              }
+            }
+          }
+        }
       }
     }
   }
   return null;
 }
 
-function smartBotMove(pawns, walls, wallCount) {
-  // 1. Always try to move toward goal with shortest path
+function evaluateGameState(pawns, walls) {
+  // Enhanced evaluation function for the game state from bot's perspective
   const bot = pawns.find(p => p.player === 2);
   const player = pawns.find(p => p.player === 1);
   const botGoal = [BOARD_SIZE - 1];
@@ -210,46 +312,595 @@ function smartBotMove(pawns, walls, wallCount) {
   const botPath = shortestPath(bot, botGoal, walls, pawns);
   const playerPath = shortestPath(player, playerGoal, walls, pawns);
   
-  // 2. If player path is strictly shorter and bot has walls, try to place a wall to slow player
-  if (
-    wallCount[2] > 0 && playerPath && botPath && playerPath.length < botPath.length
-  ) {
-    // Try more wall options along player's path
-    for (let i = 1; i < Math.min(playerPath.length - 1, 6); i++) {
-      const spot = playerPath[i];
-      for (const orientation of ['h', 'v']) {
-        const wall = { row: spot.row, col: spot.col, orientation };
-        if (!isWallOverlap(walls, wall) && !isWallBlocksPath(walls, pawns, wall)) {
-          return { type: 'wall', wall };
+  // Handle terminal or near-terminal states
+  if (!botPath) return -1000; // Bot has no path to goal, very bad
+  if (!playerPath) return 1000; // Player has no path to goal, very good for bot
+  if (botPath.length === 1) return 800; // Bot is one step away from winning
+  if (playerPath.length === 1) return -800; // Player is one step away from winning
+  
+  // Basic evaluation: weighted difference in path lengths
+  // Lower path length is better for that player
+  // Weight the path length more as the game progresses
+  const gameProgressFactor = Math.min(1.5, 1 + (walls.length / 20)); // 1.0 to 1.5 as game progresses
+  const pathDifference = playerPath.length - botPath.length;
+  let evaluation = pathDifference * gameProgressFactor;
+  
+  // Add positional value: prefer center positions for more flexibility
+  // More important in early game, less in late game
+  const centerBias = Math.max(0.1, 0.3 - (walls.length / 40)); // 0.3 to 0.1 as game progresses
+  const centerValue = (4 - Math.abs(bot.col - 4)) * centerBias;
+  evaluation += centerValue;
+  
+  // Consider mobility - having more possible moves is good
+  const botMoves = getValidPawnMoves(pawns, walls, 2).length;
+  const playerMoves = getValidPawnMoves(pawns, walls, 1).length;
+  const mobilityValue = (botMoves - playerMoves) * 0.1;
+  evaluation += mobilityValue;
+  
+  // Consider remaining walls as a resource
+  if (pawns.length === 2 && pawns[0].player !== pawns[1].player) {
+    // Assuming wallCount is accessible or can be derived
+    const wallsRemaining = walls.filter(w => w.player === 2).length;
+    const playerWallsRemaining = walls.filter(w => w.player === 1).length;
+    
+    // Having more walls than player is good, especially in close games
+    if (Math.abs(pathDifference) < 3) {
+      // If the game is close, walls are more valuable
+      evaluation += (wallsRemaining - playerWallsRemaining) * 0.2;
+    } else {
+      // If game is not close, walls are less valuable
+      evaluation += (wallsRemaining - playerWallsRemaining) * 0.1;
+    }
+  }
+  
+  // Territory control - check how many cells are closer to us than to opponent
+  let territoryControl = 0;
+  for (let r = 0; r < BOARD_SIZE; r++) {
+    for (let c = 0; c < BOARD_SIZE; c++) {
+      // Skip cells with pawns
+      if (pawns.some(p => p.row === r && p.col === c)) continue;
+      
+      // Simple distance calculation (not considering walls)
+      const distToBot = Math.abs(r - bot.row) + Math.abs(c - bot.col);
+      const distToPlayer = Math.abs(r - player.row) + Math.abs(c - player.col);
+      
+      if (distToBot < distToPlayer) {
+        territoryControl += 1;
+      } else if (distToBot > distToPlayer) {
+        territoryControl -= 1;
+      }
+    }
+  }
+  // Scale down territory control influence
+  evaluation += territoryControl * 0.01;
+  
+  // Consider progress toward goal
+  const botProgress = (BOARD_SIZE - 1) - bot.row; // 0 to 8 (higher is better)
+  const playerProgress = player.row; // 0 to 8 (higher is better)
+  
+  // Progress becomes more important as the game advances
+  const progressWeight = 0.3 + (walls.length / 40); // 0.3 to 0.8 as game progresses
+  evaluation += (botProgress - playerProgress) * progressWeight;
+  
+  return evaluation;
+}
+
+function identifyStrategicWallSpots(pawns, walls, player) {
+  // Identify strategic spots for wall placement based on opponent's position
+  // This helps the bot find good wall placements to block the opponent
+  
+  const opponent = pawns.find(p => p.player !== player);
+  const me = pawns.find(p => p.player === player);
+  const opponentGoal = player === 1 ? [BOARD_SIZE - 1] : [0];
+  const myGoal = player === 1 ? [0] : [BOARD_SIZE - 1];
+  
+  // Get opponent's current shortest path
+  const opponentPath = shortestPath(opponent, opponentGoal, walls, pawns);
+  if (!opponentPath || opponentPath.length <= 2) return []; // Too close to goal or no path
+  
+  const strategicSpots = [];
+  
+  // Check for narrow corridors in opponent's path
+  // These are good spots to place walls to force longer detours
+  for (let i = 1; i < Math.min(opponentPath.length - 1, 5); i++) {
+    const curr = opponentPath[i];
+    const next = opponentPath[i + 1];
+    
+    // Direction of movement
+    const dr = next.row - curr.row;
+    const dc = next.col - curr.col;
+    
+    // Check if this is a critical path segment (limited alternative routes)
+    let isNarrowCorridor = false;
+    let alternativePaths = 0;
+    
+    // Check alternative adjacent cells
+    const adjacentCells = [
+      { row: curr.row - 1, col: curr.col }, // up
+      { row: curr.row + 1, col: curr.col }, // down
+      { row: curr.row, col: curr.col - 1 }, // left
+      { row: curr.row, col: curr.col + 1 }, // right
+    ];
+    
+    // Count how many alternative paths exist from this spot
+    for (const cell of adjacentCells) {
+      if (
+        cell.row >= 0 && cell.row < BOARD_SIZE &&
+        cell.col >= 0 && cell.col < BOARD_SIZE &&
+        !isMoveBlocked({ row: curr.row, col: curr.col }, cell, walls) &&
+        !pawns.some(p => p.row === cell.row && p.col === cell.col)
+      ) {
+        alternativePaths++;
+      }
+    }
+    
+    // If limited alternatives, this is a good spot to block
+    isNarrowCorridor = alternativePaths <= 2;
+    
+    if (isNarrowCorridor) {
+      // Based on direction, decide where to place the wall
+      if (dr !== 0) { // Moving vertically
+        // Try horizontal walls to block
+        const wallRow = dr > 0 ? curr.row : next.row;
+        
+        // Check both positions for the horizontal wall
+        if (curr.col > 0) {
+          strategicSpots.push({
+            row: wallRow,
+            col: curr.col - 1,
+            orientation: 'h',
+            priority: 10 - i // Higher priority for spots closer to opponent
+          });
+        }
+        
+        strategicSpots.push({
+          row: wallRow, 
+          col: curr.col,
+          orientation: 'h',
+          priority: 10 - i
+        });
+      }
+      
+      if (dc !== 0) { // Moving horizontally
+        // Try vertical walls to block
+        const wallCol = dc > 0 ? curr.col : next.col;
+        
+        // Check both positions for the vertical wall
+        if (curr.row > 0) {
+          strategicSpots.push({
+            row: curr.row - 1,
+            col: wallCol,
+            orientation: 'v',
+            priority: 10 - i
+          });
+        }
+        
+        strategicSpots.push({
+          row: curr.row,
+          col: wallCol,
+          orientation: 'v',
+          priority: 10 - i
+        });
+      }
+    }
+  }
+  
+  // Add spots that protect my path
+  const myPath = shortestPath(me, myGoal, walls, pawns);
+  if (myPath && myPath.length > 2) {
+    // Focus on protecting critical junctions in my path
+    for (let i = 1; i < Math.min(myPath.length - 1, 4); i++) {
+      const spot = myPath[i];
+      
+      // Check adjacent cells that could be used to block me
+      const adjacentCells = [
+        { row: spot.row - 1, col: spot.col },
+        { row: spot.row + 1, col: spot.col },
+        { row: spot.row, col: spot.col - 1 },
+        { row: spot.row, col: spot.col + 1 }
+      ].filter(cell => 
+        cell.row >= 0 && cell.row < BOARD_SIZE && 
+        cell.col >= 0 && cell.col < BOARD_SIZE &&
+        !myPath.some(p => p.row === cell.row && p.col === cell.col)
+      );
+      
+      for (const cell of adjacentCells) {
+        // Try to place walls that would prevent opponent from blocking my path
+        // Lower priority than blocking opponent's path
+        if (cell.row < spot.row) {
+          // Cell is above spot
+          strategicSpots.push({
+            row: cell.row,
+            col: cell.col,
+            orientation: 'h',
+            priority: 5 - i // Lower priority
+          });
+        } else if (cell.row > spot.row) {
+          // Cell is below spot
+          strategicSpots.push({
+            row: spot.row,
+            col: spot.col,
+            orientation: 'h',
+            priority: 5 - i
+          });
+        } else if (cell.col < spot.col) {
+          // Cell is to the left of spot
+          strategicSpots.push({
+            row: cell.row,
+            col: cell.col,
+            orientation: 'v',
+            priority: 5 - i
+          });
+        } else if (cell.col > spot.col) {
+          // Cell is to the right of spot
+          strategicSpots.push({
+            row: spot.row,
+            col: spot.col,
+            orientation: 'v',
+            priority: 5 - i
+          });
         }
       }
     }
   }
   
-  // 3. If bot can move, take next step on shortest path
+  return strategicSpots;
+}
+
+function findBestWallPlacement(pawns, walls, wallCount) {
+  const player = pawns.find(p => p.player === 1);
+  const bot = pawns.find(p => p.player === 2);
+  const botGoal = [BOARD_SIZE - 1];
+  const playerGoal = [0];
+  
+  // Get player's path
+  const playerPath = shortestPath(player, playerGoal, walls, pawns);
+  if (!playerPath || playerPath.length <= 1) return null;
+  
+  let bestWall = null;
+  let bestEvaluation = -Infinity;
+  
+  // Get strategic wall placement spots using the new function
+  const strategicSpots = identifyStrategicWallSpots(pawns, walls, 2); // bot is player 2
+  
+  // Sort the strategic spots by priority (higher priority first)
+  strategicSpots.sort((a, b) => b.priority - a.priority);
+  
+  // Evaluate each strategic spot
+  for (const spot of strategicSpots) {
+    const wall = {
+      row: spot.row,
+      col: spot.col,
+      orientation: spot.orientation
+    };
+    
+    if (!isWallOverlap(walls, wall) && !isWallBlocksPath(walls, pawns, wall)) {
+      // See how this wall affects the game state
+      const tempWalls = [...walls, wall];
+      const newPlayerPath = shortestPath(player, playerGoal, tempWalls, pawns);
+      const botPath = shortestPath(bot, botGoal, tempWalls, pawns);
+      
+      // Skip if this wall makes bot's path too long or blocks it
+      if (!botPath || (playerPath.length < 4 && botPath.length > playerPath.length + 3)) {
+        continue;
+      }
+      
+      // Calculate evaluation considering priority and path length changes
+      let evaluation = evaluateGameState(pawns, tempWalls);
+      
+      // Boost evaluation based on strategic spot priority
+      evaluation += spot.priority * 0.5;
+      
+      // Prefer walls that force a significant detour for the player
+      if (newPlayerPath && playerPath) {
+        const detourAmount = newPlayerPath.length - playerPath.length;
+        if (detourAmount > 1) {
+          evaluation += detourAmount * 2;
+        }
+      }
+      
+      // Consider wall count in evaluation - be more conservative when low on walls
+      if (wallCount[2] < 3) {
+        evaluation -= 5; // Significant penalty when low on walls
+      } else if (wallCount[2] < 6) {
+        evaluation -= 2; // Moderate penalty when medium on walls
+      }
+      
+      if (evaluation > bestEvaluation) {
+        bestEvaluation = evaluation;
+        bestWall = wall;
+      }
+    }
+  }
+  
+  // If no strategic spots were found effective, try blocking player's path directly
+  if (!bestWall && playerPath.length > 1) {
+    for (let i = 1; i < Math.min(playerPath.length - 1, 3); i++) {
+      const spot = playerPath[i];
+      const nextSpot = playerPath[i + 1];
+      
+      // Detect direction of movement
+      const movingVertical = spot.row !== nextSpot.row;
+      const movingDown = spot.row < nextSpot.row;
+      const movingRight = spot.col < nextSpot.col;
+      
+      // Try wall placements that would block this move
+      const wallOptions = [];
+      
+      if (movingVertical) {
+        // For vertical movement, place horizontal walls
+        const row = movingDown ? spot.row : nextSpot.row;
+        wallOptions.push({ row, col: spot.col, orientation: 'h' });
+        if (spot.col > 0) wallOptions.push({ row, col: spot.col - 1, orientation: 'h' });
+      } else {
+        // For horizontal movement, place vertical walls
+        const col = movingRight ? spot.col : nextSpot.col;
+        wallOptions.push({ row: spot.row, col, orientation: 'v' });
+        if (spot.row > 0) wallOptions.push({ row: spot.row - 1, col, orientation: 'v' });
+      }
+      
+      // Evaluate each wall option
+      for (const wall of wallOptions) {
+        if (!isWallOverlap(walls, wall) && !isWallBlocksPath(walls, pawns, wall)) {
+          const tempWalls = [...walls, wall];
+          const newPlayerPath = shortestPath(player, playerGoal, tempWalls, pawns);
+          
+          // Check if it significantly increases player's path length
+          if (newPlayerPath && newPlayerPath.length > playerPath.length + 1) {
+            const evaluation = evaluateGameState(pawns, tempWalls);
+            
+            if (evaluation > bestEvaluation) {
+              bestEvaluation = evaluation;
+              bestWall = wall;
+            }
+          }
+        }
+      }
+    }
+  }
+    // Add strategic consideration: look ahead to see if the player can immediately counter
+  if (bestWall && wallCount[1] > 0) {
+    const tempWalls = [...walls, bestWall];
+    
+    // Get the bot's path with the new wall
+    const botPathWithWall = shortestPath(bot, botGoal, tempWalls, pawns);
+    
+    // Simulate what the player might do in response
+    const possibleCounterWalls = identifyStrategicWallSpots(
+      pawns, 
+      tempWalls,
+      1 // from player's perspective
+    ).slice(0, 5); // Check just a few top priority spots
+    
+    for (const counterSpot of possibleCounterWalls) {
+      const counterWall = {
+        row: counterSpot.row,
+        col: counterSpot.col,
+        orientation: counterSpot.orientation
+      };
+      
+      if (!isWallOverlap(tempWalls, counterWall) && !isWallBlocksPath(tempWalls, pawns, counterWall)) {
+        const afterCounterWalls = [...tempWalls, counterWall];
+        const botPathAfterCounter = shortestPath(bot, botGoal, afterCounterWalls, pawns);
+        
+        // If player can place a wall that significantly hurts the bot, reconsider
+        if (!botPathAfterCounter || (botPathWithWall && botPathAfterCounter.length > botPathWithWall.length + 3)) {
+          bestEvaluation -= 5; // Significant penalty if player can counter effectively
+          
+          // If the counter is devastating, maybe abandon this wall
+          if (bestEvaluation < 0) {
+            bestWall = null;
+          }
+          break;
+        }
+      }
+    }
+  }
+  
+  return bestWall;
+}
+
+function findBestMove(pawns, walls) {
+  const bot = pawns.find(p => p.player === 2);
+  const botGoal = [BOARD_SIZE - 1];
+  const validMoves = getValidPawnMoves(pawns, walls, 2);
+  
+  if (validMoves.length === 0) return null;
+  
+  let bestMove = null;
+  let bestEvaluation = -Infinity;
+  
+  for (const move of validMoves) {
+    // Simulate the move
+    const tempPawns = pawns.map(p => 
+      p.player === 2 ? { ...p, row: move.row, col: move.col } : p
+    );
+    
+    // Prefer moves that advance toward the goal
+    const evaluation = evaluateGameState(tempPawns, walls);
+    
+    // Add small preference for center columns for better positional flexibility
+    const centerBonus = (4 - Math.abs(move.col - 4)) * 0.1;
+    
+    const totalEvaluation = evaluation + centerBonus;
+    
+    if (totalEvaluation > bestEvaluation) {
+      bestEvaluation = totalEvaluation;
+      bestMove = move;
+    }
+  }
+  
+  return bestMove;
+}
+
+function smartBotMove(pawns, walls, wallCount) {
+  const bot = pawns.find(p => p.player === 2);
+  const player = pawns.find(p => p.player === 1);
+  const botGoal = [BOARD_SIZE - 1];
+  const playerGoal = [0];
+  const botPath = shortestPath(bot, botGoal, walls, pawns);
+  const playerPath = shortestPath(player, playerGoal, walls, pawns);
+  
+  // Calculate the current game state evaluation
+  const evaluation = evaluateGameState(pawns, walls);
+
+  // Define the bot's strategy based on the game state
+  let strategy;
+  
+  if (!botPath) {
+    strategy = "desperate"; // Bot has no path to goal
+  } else if (!playerPath) {
+    strategy = "winning"; // Player has no path to goal
+  } else if (playerPath.length <= 2) {
+    strategy = "emergency"; // Player is about to win
+  } else if (botPath.length <= 2) {
+    strategy = "rush"; // Bot is about to win
+  } else if (playerPath.length < botPath.length - 2) {
+    strategy = "catchup"; // Player is significantly ahead
+  } else if (botPath.length < playerPath.length - 2) {
+    strategy = "maintain_lead"; // Bot is significantly ahead
+  } else {
+    strategy = "balanced"; // Game is roughly even
+  }
+  
+  // Adapt wall usage based on remaining walls and game phase
+  let wallUsageProbability;
+  const gamePhase = Math.min(walls.length / 10, 1); // 0 to 1 indicating game progress
+  
+  switch (strategy) {
+    case "emergency":
+      // Must place walls if player is about to win
+      if (wallCount[2] > 0) {
+        const bestWall = findBestWallPlacement(pawns, walls, wallCount);
+        if (bestWall) {
+          return { type: 'wall', wall: bestWall };
+        }
+      }
+      break;
+      
+    case "rush":
+      // Just move to win, don't bother with walls
+      if (botPath && botPath.length > 1) {
+        return { type: 'move', row: botPath[1].row, col: botPath[1].col };
+      }
+      break;
+      
+    case "catchup":
+      // High probability of using walls to slow down player
+      wallUsageProbability = 0.8 - (0.4 * gamePhase);
+      if (wallCount[2] > 0 && Math.random() < wallUsageProbability) {
+        const bestWall = findBestWallPlacement(pawns, walls, wallCount);
+        if (bestWall) {
+          return { type: 'wall', wall: bestWall };
+        }
+      }
+      break;
+      
+    case "maintain_lead":
+      // Lower probability of using walls, focus on moving
+      wallUsageProbability = 0.3;
+      if (wallCount[2] > 0 && Math.random() < wallUsageProbability) {
+        const bestWall = findBestWallPlacement(pawns, walls, wallCount);
+        if (bestWall) {
+          return { type: 'wall', wall: bestWall };
+        }
+      }
+      break;
+      
+    case "balanced":
+      // Medium probability of using walls, balanced approach
+      wallUsageProbability = 0.5 - (0.2 * gamePhase);
+      
+      // Try to optimize based on remaining walls
+      // Save walls if running low
+      if (wallCount[2] < 3) {
+        wallUsageProbability *= 0.5;
+      }
+      
+      // If player is slightly ahead, increase wall probability
+      if (playerPath.length < botPath.length) {
+        wallUsageProbability += 0.2;
+      }
+      
+      if (wallCount[2] > 0 && Math.random() < wallUsageProbability) {
+        const bestWall = findBestWallPlacement(pawns, walls, wallCount);
+        if (bestWall) {
+          return { type: 'wall', wall: bestWall };
+        }
+      }
+      break;
+      
+    case "desperate":
+      // Try to clear a path for bot
+      if (wallCount[2] > 0) {
+        // Identify walls that might be blocking the bot
+        for (let r = 0; r < BOARD_SIZE - 1; r++) {
+          for (let c = 0; c < BOARD_SIZE - 1; c++) {
+            for (const orientation of ['h', 'v']) {
+              // Check if removing a wall would create a path
+              const testWalls = walls.filter(wall => 
+                !(wall.row === r && wall.col === c && wall.orientation === orientation)
+              );
+              const testPath = shortestPath(bot, botGoal, testWalls, pawns);
+              
+              if (testPath) {
+                // Found a critical wall - try to place a counter-wall to open a path
+                const adjacentCells = [
+                  { row: r - 1, col: c },
+                  { row: r + 1, col: c },
+                  { row: r, col: c - 1 },
+                  { row: r, col: c + 1 }
+                ].filter(cell => 
+                  cell.row >= 0 && cell.row < BOARD_SIZE - 1 && 
+                  cell.col >= 0 && cell.col < BOARD_SIZE - 1
+                );
+                
+                for (const cell of adjacentCells) {
+                  const counterOrientation = orientation === 'h' ? 'v' : 'h';
+                  const wall = { row: cell.row, col: cell.col, orientation: counterOrientation };
+                  
+                  if (!isWallOverlap(walls, wall) && !isWallBlocksPath(testWalls, pawns, wall)) {
+                    return { type: 'wall', wall };
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      break;
+      
+    case "winning":
+      // Just move to win, no need for walls
+      if (botPath && botPath.length > 1) {
+        return { type: 'move', row: botPath[1].row, col: botPath[1].col };
+      }
+      break;
+  }
+  
+  // If we didn't decide on a wall placement, make the best possible move
+  // First check if we can use a more advanced path finding for the move
+  const bestMove = findBestMove(pawns, walls);
+  if (bestMove) {
+    return { type: 'move', row: bestMove.row, col: bestMove.col };
+  }
+  
+  // Fallback to simple path-following
   if (botPath && botPath.length > 1) {
     return { type: 'move', row: botPath[1].row, col: botPath[1].col };
   }
   
-  // 4. Fallback: if no path found, try any valid move
+  // Last resort: try any valid move
   const validMoves = getValidPawnMoves(pawns, walls, 2);
   if (validMoves.length > 0) {
-    // Choose the move that gets closest to the goal
-    let bestMove = validMoves[0];
-    let bestDistance = Math.abs(validMoves[0].row - (BOARD_SIZE - 1));
-    
-    for (const move of validMoves) {
-      const distance = Math.abs(move.row - (BOARD_SIZE - 1));
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        bestMove = move;
-      }
-    }
-    
-    return { type: 'move', row: bestMove.row, col: bestMove.col };
+    // Sort by distance to goal
+    validMoves.sort((a, b) => 
+      Math.abs(a.row - (BOARD_SIZE - 1)) - Math.abs(b.row - (BOARD_SIZE - 1))
+    );
+    return { type: 'move', row: validMoves[0].row, col: validMoves[0].col };
   }
   
-  // 5. Last resort: skip turn (this should never happen in valid Quoridor)
+  // Ultimate fallback: skip turn (should never happen in valid Quoridor)
   return { type: 'skip' };
 }
 
